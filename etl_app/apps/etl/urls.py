@@ -1,6 +1,6 @@
 from django.urls import path
 
-from .views import ODataExtractionView
+from .views import (ODataExtractionView, ODataTransformationView)
 
 
 urlpatterns = [
@@ -8,5 +8,11 @@ urlpatterns = [
         "extract/",
         ODataExtractionView.as_view(),
         name="odata-extraction"
+    ),
+
+    path(
+        "transform/",
+        ODataTransformationView.as_view(),
+        name="odata-transformation"
     ),
 ]
