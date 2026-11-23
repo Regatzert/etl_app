@@ -1,9 +1,7 @@
-# apps/data/views.py
-
 from rest_framework.generics import ListAPIView
 
-from apps.data.services import EmployeeService
-from apps.data.serializers import EmployeeSerializer
+from .services.employee_service import EmployeeService
+from .serializers import EmployeeSerializer
 
 
 class EmployeeListView(ListAPIView):

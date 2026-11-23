@@ -1,8 +1,8 @@
 # apps/etl/orchestrators/etl_orchestrator.py
 
-from apps.etl.extractors.odata_extractor import ODataExtractor
-from apps.etl.transformers.odata_transformer import ODataTransformer
-from apps.etl.loaders.postgres_loader import PostgresLoader
+from apps.etl.extract.odata_extractor import ODataExtractor
+from apps.etl.transform.odata_transformer import ODataTransformer
+from apps.etl.load.postgres_loader import PostgresLoader
 
 
 class ETLOrchestrator:
