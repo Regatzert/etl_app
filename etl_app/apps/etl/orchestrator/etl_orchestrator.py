@@ -2,7 +2,7 @@
 
 from apps.etl.extract.odata_extractor import ODataExtractor
 from apps.etl.transform.odata_transformer import ODataTransformer
-from apps.etl.load.postgres_loader import PostgresLoader
+from etl_app.apps.etl.load.postgresql_loader import PostgreSQLLoader
 
 
 class ETLOrchestrator:
@@ -11,7 +11,7 @@ class ETLOrchestrator:
 
         self.extractor = ODataExtractor()
         self.transformer = ODataTransformer()
-        self.loader = PostgresLoader()
+        self.loader = PostgreSQLLoader()
 
     def execute(self, url: str, requested_by: str):
 

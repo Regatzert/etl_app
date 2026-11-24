@@ -1,6 +1,9 @@
 from django.urls import path
 
-from .views import EmployeeListView
+from .views import (
+    EmployeeListView,
+    DataQueryView,
+)
 
 
 urlpatterns = [
@@ -8,5 +11,11 @@ urlpatterns = [
         "employees/",
         EmployeeListView.as_view(),
         name="employee-list",
+    ),
+
+    path(
+        "<str:dataset>/",
+        DataQueryView.as_view(),
+        name="data-query"
     ),
 ]

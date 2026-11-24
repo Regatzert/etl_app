@@ -1,6 +1,9 @@
 from django.urls import path
 
-from .views import (ODataExtractionView, ODataTransformationView)
+from .views import (ODataExtractionView, 
+                    ODataTransformationView, 
+                    ODataLoadView,
+                    ETLExecutionView,)
 
 
 urlpatterns = [
@@ -14,5 +17,17 @@ urlpatterns = [
         "transform/",
         ODataTransformationView.as_view(),
         name="odata-transformation"
+    ),
+
+    path(
+        "load/",
+        ODataLoadView.as_view(),
+        name="odata-load"
+    ),
+
+    path(
+        "execute/",
+        ETLExecutionView.as_view(),
+        name="etl-execution"
     ),
 ]

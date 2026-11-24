@@ -107,3 +107,119 @@ class ODataTransformationSerializer(serializers.Serializer):
                 )
 
         return value
+
+class ODataLoadSerializer(serializers.Serializer):
+
+    records = serializers.ListField(
+        child=serializers.DictField(),
+        required=True,
+        allow_empty=True
+    )
+
+    dataset = serializers.CharField(
+        required=True,
+        max_length=100
+    )
+
+    batch_size = serializers.IntegerField(
+        required=False,
+        default=1000,
+        min_value=1,
+        max_value=10000
+    )
+
+    def validate_dataset(self, value):
+
+        value = value.strip()
+
+        if not value:
+
+            raise serializers.ValidationError(
+                "El dataset no puede estar vacío."
+            )
+
+        return value
+
+class ETLExecutionSerializer(serializers.Serializer):
+
+    source = ODataExtractionSerializer()
+
+    transformation = serializers.DictField(
+        required=False,
+        default=dict
+    )
+
+    load = serializers.DictField(
+        required=True
+    )
+
+    def validate_transformation(self, value):
+
+        mapping = value.get(
+            "mapping",
+            {}
+        )
+
+        types = value.get(
+            "types",
+            {}
+        )
+
+        include_unmapped = value.get(
+            "include_unmapped",
+            False
+        )
+
+        serializer = ODataTransformationSerializer(
+            data={
+                "records": [],
+                "mapping": mapping,
+                "types": types,
+                "include_unmapped": include_unmapped,
+            }
+        )
+
+        serializer.is_valid(
+            raise_exception=True
+        )
+
+        return serializer.validated_data
+
+    def validate_load(self, value):
+
+        dataset = value.get("dataset")
+
+        if not dataset:
+
+            raise serializers.ValidationError(
+                "El dataset es obligatorio."
+            )
+
+        dataset = dataset.strip()
+
+        if not dataset:
+
+            raise serializers.ValidationError(
+                "El dataset no puede estar vacío."
+            )
+
+        batch_size = value.get(
+            "batch_size",
+            1000
+        )
+
+        if not isinstance(batch_size, int):
+
+            raise serializers.ValidationError(
+                "batch_size debe ser un entero."
+            )
+
+        if batch_size < 1 or batch_size > 10000:
+
+            raise serializers.ValidationError(
+                "batch_size debe estar entre 1 y 10000."
+            )
+
+        value["dataset"] = dataset
+
+        return value
