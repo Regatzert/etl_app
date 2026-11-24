@@ -1,6 +1,6 @@
+
 import logging
 from datetime import datetime, timezone
-from typing import Any
 
 from etl_app.apps.etl.extract.odata_extractor import ODataExtractor
 
@@ -12,62 +12,74 @@ class ExtractionService:
 
     @staticmethod
     def extract_from_odata(
+        connection_name: str,
         url: str,
-        username: str | None = None,
-        password: str | None = None,
+        auth=None,
+        headers: dict | None = None,
         timeout: int = 60,
         max_retries: int = 3,
-    ) -> dict[str, Any]:
+    ) -> dict:
 
         started_at = datetime.now(timezone.utc)
 
-        logger.info("Iniciando extracción OData")
+        result = {
+            "status": "running",
+            "source": url,
+            "connection": connection_name,
+            "started_at": started_at.isoformat(),
+            "finished_at": None,
+            "duration_seconds": None,
+            "records_count": 0,
+            "records": [],
+            "message": "Extracción iniciada.",
+        }
 
         try:
 
+            logger.info(
+                "Iniciando extracción OData. Conexión: %s",
+                connection_name
+            )
+
             extractor = ODataExtractor(
                 url=url,
-                username=username,
-                password=password,
+                auth=auth,
+                headers=headers,
                 timeout=timeout,
-                max_retries=max_retries,
+                max_retries=max_retries
             )
 
             records = extractor.extract()
 
-            finished_at = datetime.now(timezone.utc)
-
-            result = {
-                "status": "success",
-                "source": "odata",
-                "started_at": started_at.isoformat(),
-                "finished_at": finished_at.isoformat(),
-                "records_count": len(records),
-                "records": records,
-            }
+            result["status"] = "success"
+            result["records"] = records
+            result["records_count"] = len(records)
+            result["message"] = (
+                "Extracción OData completada correctamente."
+            )
 
             logger.info(
-                "Extracción completada correctamente. "
-                "Registros: %s",
-                len(records),
+                "Extracción completada. Registros obtenidos: %s",
+                len(records)
             )
 
-            return result
-
-        except Exception:
+        except Exception as error:
 
             logger.exception(
-                "Error durante el proceso de extracción OData"
+                "Error durante la extracción OData."
             )
+
+            result["status"] = "error"
+            result["message"] = str(error)
+
+        finally:
 
             finished_at = datetime.now(timezone.utc)
 
-            return {
-                "status": "error",
-                "source": "odata",
-                "started_at": started_at.isoformat(),
-                "finished_at": finished_at.isoformat(),
-                "records_count": 0,
-                "records": [],
-                "message": "Error durante la extracción de datos.",
-            }
+            result["finished_at"] = finished_at.isoformat()
+
+            result["duration_seconds"] = (
+                finished_at - started_at
+            ).total_seconds()
+
+        return result

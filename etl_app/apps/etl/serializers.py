@@ -223,3 +223,12 @@ class ETLExecutionSerializer(serializers.Serializer):
         value["dataset"] = dataset
 
         return value
+
+class ODataDiscoverySerializer(serializers.Serializer):
+    url = serializers.URLField()
+    timeout = serializers.IntegerField(
+        required=False,
+        default=30,
+        min_value=1,
+        max_value=120
+    )

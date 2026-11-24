@@ -1,8 +1,10 @@
+
 import logging
 from typing import Any
 from urllib.parse import urlparse, urljoin
 
 import requests
+
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
@@ -17,23 +19,38 @@ class ODataExtractor(BaseExtractor):
     def __init__(
         self,
         url: str,
-        username: str | None = None,
-        password: str | None = None,
+        auth=None,
+        headers: dict | None = None,
         timeout: int = 60,
         max_retries: int = 3,
-        page_size: int = 1000,
+        page_size: int = 1000
     ):
-        self.url = url
-        self.username = username
-        self.password = password
-        self.timeout = timeout
-        self.page_size = page_size
 
-        self._validate_url()
+        self.url = url
+        self.timeout = timeout
+        self.max_retries = max_retries
+        self.page_size = page_size
 
         self.session = requests.Session()
 
-        # Configuración de reintentos
+        # =========================================
+        # AUTENTICACIÓN
+        # =========================================
+
+        if auth:
+            self.session.auth = auth
+
+        if headers:
+            self.session.headers.update(headers)
+
+        self.session.headers.update({
+            "Accept": "application/json"
+        })
+
+        # =========================================
+        # CONFIGURACIÓN DE REINTENTOS
+        # =========================================
+
         retry_strategy = Retry(
             total=max_retries,
             connect=max_retries,
@@ -42,20 +59,19 @@ class ODataExtractor(BaseExtractor):
             backoff_factor=1,
             status_forcelist=[429, 500, 502, 503, 504],
             allowed_methods=["GET"],
+            respect_retry_after_header=True
         )
 
-        adapter = HTTPAdapter(max_retries=retry_strategy)
+        adapter = HTTPAdapter(
+            max_retries=retry_strategy
+        )
 
         self.session.mount("http://", adapter)
         self.session.mount("https://", adapter)
 
-        # Autenticación Basic Auth, cuando corresponda
-        if username and password:
-            self.session.auth = (username, password)
-
-        self.session.headers.update({
-            "Accept": "application/json",
-        })
+    # =========================================
+    # VALIDACIÓN DE URL
+    # =========================================
 
     def _validate_url(self) -> None:
 
@@ -66,7 +82,7 @@ class ODataExtractor(BaseExtractor):
                 "La URL OData debe utilizar HTTP o HTTPS."
             )
 
-        if not parsed_url.netloc:
+        if not parsed_url.netloc or not parsed_url.hostname:
             raise ValueError(
                 "La URL OData no contiene un host válido."
             )
@@ -76,6 +92,15 @@ class ODataExtractor(BaseExtractor):
                 "No se permite incluir credenciales directamente en la URL."
             )
 
+        if parsed_url.fragment:
+            raise ValueError(
+                "La URL OData no debe contener fragmentos."
+            )
+
+    # =========================================
+    # OBTENER REGISTROS DE RESPUESTA
+    # =========================================
+
     def _get_records_from_response(
         self,
         response_data: dict[str, Any]
@@ -83,7 +108,15 @@ class ODataExtractor(BaseExtractor):
 
         # OData v4
         if "value" in response_data:
-            return response_data["value"]
+
+            records = response_data["value"]
+
+            if not isinstance(records, list):
+                raise ValueError(
+                    "La propiedad 'value' de OData debe ser una lista."
+                )
+
+            return records
 
         # OData v2
         if "d" in response_data:
@@ -96,11 +129,16 @@ class ODataExtractor(BaseExtractor):
             if isinstance(data, list):
                 return data
 
-            return [data]
+            if isinstance(data, dict):
+                return [data]
 
         raise ValueError(
             "La respuesta no contiene una estructura OData reconocida."
         )
+
+    # =========================================
+    # OBTENER SIGUIENTE PÁGINA
+    # =========================================
 
     def _get_next_link(
         self,
@@ -121,7 +159,13 @@ class ODataExtractor(BaseExtractor):
 
         return None
 
+    # =========================================
+    # EXTRACCIÓN
+    # =========================================
+
     def extract(self) -> list[dict[str, Any]]:
+
+        self._validate_url()
 
         records = []
 
@@ -129,42 +173,58 @@ class ODataExtractor(BaseExtractor):
 
         page_number = 1
 
-        while next_url:
+        try:
 
-            logger.info(
-                "Extrayendo página OData %s",
-                page_number
-            )
+            while next_url:
 
-            response = self.session.get(
-                next_url,
-                timeout=self.timeout,
-            )
+                logger.info(
+                    "Extrayendo página OData %s",
+                    page_number
+                )
 
-            response.raise_for_status()
+                response = self.session.get(
+                    next_url,
+                    timeout=self.timeout,
+                    params=(
+                        {"$top": self.page_size}
+                        if page_number == 1
+                        else None
+                    )
+                )
 
-            response_data = response.json()
+                response.raise_for_status()
 
-            page_records = self._get_records_from_response(
-                response_data
-            )
+                try:
+                    response_data = response.json()
 
-            records.extend(page_records)
+                except ValueError as error:
+                    raise ValueError(
+                        "La respuesta OData no contiene JSON válido."
+                    ) from error
 
-            logger.info(
-                "Página %s: %s registros obtenidos",
-                page_number,
-                len(page_records)
-            )
+                page_records = self._get_records_from_response(
+                    response_data
+                )
 
-            next_url = self._get_next_link(
-                response_data
-            )
+                records.extend(page_records)
 
-            if next_url:
-                next_url = self._validate_next_link(next_url)
+                logger.info(
+                    "Página %s: %s registros obtenidos",
+                    page_number,
+                    len(page_records)
+                )
 
-            page_number += 1
+                next_url = self._get_next_link(
+                    response_data
+                )
+
+                if next_url:
+                    next_url = self._validate_next_link(next_url)
+
+                page_number += 1
+
+        finally:
+            self.session.close()
 
         logger.info(
             "Extracción OData finalizada. Total de registros: %s",
@@ -173,9 +233,12 @@ class ODataExtractor(BaseExtractor):
 
         return records
 
+    # =========================================
+    # VALIDAR NEXT LINK
+    # =========================================
+
     def _validate_next_link(self, next_url: str) -> str:
 
-        # Convertir enlaces relativos en enlaces absolutos
         absolute_url = urljoin(self.url, next_url)
 
         original_url = urlparse(self.url)
@@ -186,9 +249,43 @@ class ODataExtractor(BaseExtractor):
                 "El siguiente enlace OData tiene un esquema inválido."
             )
 
-        if next_link.netloc != original_url.netloc:
+        if not next_link.hostname:
+            raise ValueError(
+                "El siguiente enlace OData no contiene un host válido."
+            )
+
+        if next_link.username or next_link.password:
+            raise ValueError(
+                "El siguiente enlace OData no debe contener credenciales."
+            )
+
+        if next_link.fragment:
+            raise ValueError(
+                "El siguiente enlace OData no debe contener fragmentos."
+            )
+
+        original_host = (
+            original_url.hostname.lower(),
+            original_url.port or (
+                443 if original_url.scheme == "https" else 80
+            )
+        )
+
+        next_host = (
+            next_link.hostname.lower(),
+            next_link.port or (
+                443 if next_link.scheme == "https" else 80
+            )
+        )
+
+        if next_host != original_host:
             raise ValueError(
                 "El siguiente enlace OData apunta a un host diferente."
+            )
+
+        if next_link.scheme != original_url.scheme:
+            raise ValueError(
+                "El siguiente enlace OData utiliza un protocolo diferente."
             )
 
         return absolute_url

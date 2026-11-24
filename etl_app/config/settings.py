@@ -1,5 +1,6 @@
 import environ
 from pathlib import Path
+from etl_app.apps.etl.config.databases import build_databases
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
@@ -32,17 +33,35 @@ ALLOWED_HOSTS = env.list(
 # BASE DE DATOS
 # =========================================================
 
-DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.postgresql",
-        "NAME": env("DB_NAME"),
-        "USER": env("DB_USER"),
-        "PASSWORD": env("DB_PASSWORD"),
-        "HOST": env("DB_HOST"),
-        "PORT": env("DB_PORT"),
-        "CONN_MAX_AGE": 60,
-    }
-}
+DATABASES = build_databases(env)
+# DATABASES = {
+#     "default": {
+#         "ENGINE": "django.db.backends.postgresql",
+#         "NAME": env("DB_NAME"),
+#         "USER": env("DB_USER"),
+#         "PASSWORD": env("DB_PASSWORD"),
+#         "HOST": env("DB_HOST"),
+#         "PORT": env("DB_PORT"),
+#     },
+
+#     # "postgres_reporting": {
+#     #     "ENGINE": "django.db.backends.postgresql",
+#     #     "NAME": env("REPORTING_DB_NAME"),
+#     #     "USER": env("REPORTING_DB_USER"),
+#     #     "PASSWORD": env("REPORTING_DB_PASSWORD"),
+#     #     "HOST": env("REPORTING_DB_HOST"),
+#     #     "PORT": env("REPORTING_DB_PORT"),
+#     # },
+
+#     # "postgres_warehouse": {
+#     #     "ENGINE": "django.db.backends.postgresql",
+#     #     "NAME": env("WAREHOUSE_DB_NAME"),
+#     #     "USER": env("WAREHOUSE_DB_USER"),
+#     #     "PASSWORD": env("WAREHOUSE_DB_PASSWORD"),
+#     #     "HOST": env("WAREHOUSE_DB_HOST"),
+#     #     "PORT": env("WAREHOUSE_DB_PORT"),
+#     # },
+# }
 
 
 # =========================================================
