@@ -3,9 +3,12 @@ import logging
 import os
 import threading
 import time
+
 from typing import Any
+from urllib.parse import urlsplit
 
 import requests
+
 from requests.auth import HTTPBasicAuth
 
 from etl_app.apps.etl.config.connections import CONNECTIONS
@@ -112,7 +115,7 @@ class AuthenticationService:
 
         if not token:
             raise ValueError(
-                f"No se encontró el token configurado en {token_env}."
+                "No se encontró el token configurado para Bearer Auth."
             )
 
         return {
@@ -128,6 +131,7 @@ class AuthenticationService:
     ) -> dict[str, Any]:
 
         key_env = configuration.get("key_env")
+
         header_name = configuration.get(
             "header_name",
             "X-API-Key",
@@ -142,7 +146,12 @@ class AuthenticationService:
 
         if not api_key:
             raise ValueError(
-                f"No se encontró la API Key configurada en {key_env}."
+                "No se encontró la API Key configurada."
+            )
+
+        if not isinstance(header_name, str) or not header_name.strip():
+            raise ValueError(
+                "El nombre del header de API Key no es válido."
             )
 
         return {
@@ -182,7 +191,10 @@ class AuthenticationService:
 
             cached_token = cls._token_cache.get(connection_name)
 
-            if cached_token and time.time() < cached_token["expires_at"]:
+            if (
+                cached_token
+                and time.time() < cached_token["expires_at"]
+            ):
                 return cached_token["access_token"]
 
             token_url_env = configuration.get("token_url_env")
@@ -208,6 +220,8 @@ class AuthenticationService:
                     "Faltan variables de entorno para OAuth 2.0."
                 )
 
+            cls._validate_token_url(token_url)
+
             scope_env = configuration.get("scope_env")
             scope = os.getenv(scope_env) if scope_env else None
 
@@ -218,25 +232,87 @@ class AuthenticationService:
             if scope:
                 payload["scope"] = scope
 
-            response = requests.post(
-                token_url,
-                data=payload,
-                auth=(client_id, client_secret),
-                timeout=configuration.get("timeout", 60),
+            timeout_env = configuration.get(
+                "timeout_env",
+                "ODATA_TIMEOUT",
             )
 
-            response.raise_for_status()
+            try:
+                timeout = int(
+                    os.getenv(timeout_env, "60")
+                )
+            except (TypeError, ValueError) as error:
+                raise ValueError(
+                    "El timeout configurado para OAuth 2.0 no es válido."
+                ) from error
 
-            token_data = response.json()
+            if timeout < 1 or timeout > 300:
+                raise ValueError(
+                    "El timeout de OAuth 2.0 debe estar entre 1 y 300 segundos."
+                )
+
+            try:
+
+                response = requests.post(
+                    token_url,
+                    data=payload,
+                    auth=(client_id, client_secret),
+                    timeout=timeout,
+                )
+
+                response.raise_for_status()
+
+                token_data = response.json()
+
+            except requests.RequestException as error:
+
+                logger.error(
+                    "No fue posible obtener el token OAuth 2.0 "
+                    "para la conexión '%s'.",
+                    connection_name,
+                )
+
+                raise ValueError(
+                    "No fue posible obtener el token OAuth 2.0."
+                ) from error
+
+            except ValueError as error:
+
+                logger.error(
+                    "El servidor OAuth 2.0 devolvió una respuesta inválida "
+                    "para la conexión '%s'.",
+                    connection_name,
+                )
+
+                raise ValueError(
+                    "La respuesta del servidor OAuth 2.0 no es válida."
+                ) from error
+
+            if not isinstance(token_data, dict):
+                raise ValueError(
+                    "La respuesta OAuth 2.0 debe ser un objeto JSON."
+                )
 
             access_token = token_data.get("access_token")
 
-            if not access_token:
+            if not isinstance(access_token, str) or not access_token.strip():
                 raise ValueError(
-                    "El servidor OAuth 2.0 no devolvió access_token."
+                    "El servidor OAuth 2.0 no devolvió un access_token válido."
                 )
 
-            expires_in = int(token_data.get("expires_in", 3600))
+            try:
+                expires_in = int(
+                    token_data.get("expires_in", 3600)
+                )
+            except (TypeError, ValueError) as error:
+                raise ValueError(
+                    "El tiempo de expiración del token OAuth 2.0 no es válido."
+                ) from error
+
+            if expires_in <= 0:
+                raise ValueError(
+                    "El tiempo de expiración del token debe ser positivo."
+                )
 
             # Renovar un minuto antes de la expiración.
             cache_duration = max(expires_in - 60, 0)
@@ -252,3 +328,29 @@ class AuthenticationService:
             )
 
             return access_token
+
+    @staticmethod
+    def _validate_token_url(token_url: str) -> None:
+
+        if not isinstance(token_url, str) or not token_url.strip():
+            raise ValueError(
+                "La URL del servidor OAuth 2.0 es obligatoria."
+            )
+
+        parsed = urlsplit(token_url)
+
+        if parsed.scheme not in ("http", "https") or not parsed.netloc:
+            raise ValueError(
+                "La URL del servidor OAuth 2.0 debe utilizar HTTP o HTTPS."
+            )
+
+        if parsed.scheme != "https":
+            raise ValueError(
+                "El servidor OAuth 2.0 debe utilizar HTTPS."
+            )
+
+        if parsed.username or parsed.password or parsed.fragment:
+            raise ValueError(
+                "La URL del servidor OAuth 2.0 no debe contener "
+                "credenciales ni fragmentos."
+            )

@@ -75,7 +75,19 @@ class ODataMetadataInspector:
         parsed = urlsplit(url)
 
         if parsed.scheme not in ("http", "https") or not parsed.netloc:
-            raise ValueError("La URL debe utilizar HTTP o HTTPS.")
+            raise ValueError(
+                "La URL debe utilizar HTTP o HTTPS."
+            )
+
+        if parsed.username or parsed.password:
+            raise ValueError(
+                "La URL no debe contener credenciales."
+            )
+
+        if parsed.fragment:
+            raise ValueError(
+                "La URL no debe contener fragmentos."
+            )
 
         path = parsed.path.rstrip("/")
 

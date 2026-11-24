@@ -1,7 +1,13 @@
+
 from rest_framework import serializers
 
 
 class ODataExtractionSerializer(serializers.Serializer):
+
+    connection = serializers.CharField(
+        required=True,
+        max_length=100
+    )
 
     source_type = serializers.ChoiceField(
         choices=["odata"],
@@ -12,17 +18,9 @@ class ODataExtractionSerializer(serializers.Serializer):
         required=True
     )
 
-    username = serializers.CharField(
+    query_params = serializers.DictField(
         required=False,
-        allow_blank=True,
-        default=None
-    )
-
-    password = serializers.CharField(
-        required=False,
-        allow_blank=True,
-        default=None,
-        write_only=True
+        default=dict
     )
 
     timeout = serializers.IntegerField(
@@ -39,12 +37,38 @@ class ODataExtractionSerializer(serializers.Serializer):
         max_value=10
     )
 
+    def validate_connection(self, value):
+        value = value.strip()
+
+        if not value:
+            raise serializers.ValidationError(
+                "La conexión es obligatoria."
+            )
+
+        return value
+
     def validate_url(self, value):
 
         if not value.startswith(("http://", "https://")):
             raise serializers.ValidationError(
                 "La URL debe utilizar HTTP o HTTPS."
             )
+
+        return value
+
+    def validate_query_params(self, value):
+
+        for key, parameter_value in value.items():
+
+            if not isinstance(key, str) or not key.strip():
+                raise serializers.ValidationError(
+                    "Los nombres de los parámetros no pueden estar vacíos."
+                )
+
+            if parameter_value is None:
+                raise serializers.ValidationError(
+                    f"El parámetro '{key}' no puede tener valor None."
+                )
 
         return value
 
@@ -108,6 +132,37 @@ class ODataTransformationSerializer(serializers.Serializer):
 
         return value
 
+
+class ETLTransformationConfigSerializer(serializers.Serializer):
+
+    mapping = serializers.DictField(
+        child=serializers.CharField(),
+        required=False,
+        default=dict
+    )
+
+    types = serializers.DictField(
+        child=serializers.ChoiceField(
+            choices=[
+                "string",
+                "integer",
+                "decimal",
+                "float",
+                "boolean",
+                "date",
+                "datetime",
+            ]
+        ),
+        required=False,
+        default=dict
+    )
+
+    include_unmapped = serializers.BooleanField(
+        required=False,
+        default=False
+    )
+
+
 class ODataLoadSerializer(serializers.Serializer):
 
     records = serializers.ListField(
@@ -121,6 +176,14 @@ class ODataLoadSerializer(serializers.Serializer):
         max_length=100
     )
 
+    strategy = serializers.ChoiceField(
+        choices=[
+            "replace_all",
+            "replace_by_filter"
+        ],
+        default="replace_all"
+    )
+
     batch_size = serializers.IntegerField(
         required=False,
         default=1000,
@@ -128,107 +191,170 @@ class ODataLoadSerializer(serializers.Serializer):
         max_value=10000
     )
 
+    allow_empty = serializers.BooleanField(
+        required=False,
+        default=False
+    )
+
+    delete_filter = serializers.DictField(
+        required=False,
+        allow_empty=False
+    )
+
     def validate_dataset(self, value):
 
         value = value.strip()
 
         if not value:
-
             raise serializers.ValidationError(
                 "El dataset no puede estar vacío."
             )
 
         return value
+
+    def validate(self, attrs):
+
+        strategy = attrs.get("strategy")
+        delete_filter = attrs.get("delete_filter")
+
+        if strategy == "replace_by_filter" and not delete_filter:
+            raise serializers.ValidationError({
+                "delete_filter": (
+                    "Es obligatorio para la estrategia replace_by_filter."
+                )
+            })
+
+        if strategy == "replace_all" and delete_filter:
+            raise serializers.ValidationError({
+                "delete_filter": (
+                    "No corresponde utilizar delete_filter con replace_all."
+                )
+            })
+
+        return attrs
+
+
+class ETLLoadConfigSerializer(serializers.Serializer):
+
+    dataset = serializers.CharField(
+        required=True,
+        max_length=100
+    )
+
+    strategy = serializers.ChoiceField(
+        choices=[
+            "replace_all",
+            "replace_by_filter"
+        ],
+        default="replace_all"
+    )
+
+    batch_size = serializers.IntegerField(
+        required=False,
+        default=1000,
+        min_value=1,
+        max_value=10000
+    )
+
+    allow_empty = serializers.BooleanField(
+        required=False,
+        default=False
+    )
+
+    delete_filter = serializers.DictField(
+        required=False,
+        allow_empty=False
+    )
+
+    database = serializers.CharField(
+        required=False,
+        default="etl_platform",
+        max_length=100
+    )
+
+    def validate_dataset(self, value):
+
+        value = value.strip()
+
+        if not value:
+            raise serializers.ValidationError(
+                "El dataset no puede estar vacío."
+            )
+
+        return value
+
+    def validate_database(self, value):
+
+        value = value.strip()
+
+        if not value:
+            raise serializers.ValidationError(
+                "La base de datos no puede estar vacía."
+            )
+
+        return value
+
+    def validate(self, attrs):
+
+        strategy = attrs.get("strategy")
+        delete_filter = attrs.get("delete_filter")
+
+        if strategy == "replace_by_filter" and not delete_filter:
+            raise serializers.ValidationError({
+                "delete_filter": (
+                    "Es obligatorio para la estrategia replace_by_filter."
+                )
+            })
+
+        if strategy == "replace_all" and delete_filter:
+            raise serializers.ValidationError({
+                "delete_filter": (
+                    "No corresponde utilizar delete_filter con replace_all."
+                )
+            })
+
+        return attrs
+
 
 class ETLExecutionSerializer(serializers.Serializer):
 
     source = ODataExtractionSerializer()
 
-    transformation = serializers.DictField(
+    transformation = ETLTransformationConfigSerializer(
         required=False,
         default=dict
     )
 
-    load = serializers.DictField(
+    load = ETLLoadConfigSerializer(
         required=True
     )
 
-    def validate_transformation(self, value):
-
-        mapping = value.get(
-            "mapping",
-            {}
-        )
-
-        types = value.get(
-            "types",
-            {}
-        )
-
-        include_unmapped = value.get(
-            "include_unmapped",
-            False
-        )
-
-        serializer = ODataTransformationSerializer(
-            data={
-                "records": [],
-                "mapping": mapping,
-                "types": types,
-                "include_unmapped": include_unmapped,
-            }
-        )
-
-        serializer.is_valid(
-            raise_exception=True
-        )
-
-        return serializer.validated_data
-
-    def validate_load(self, value):
-
-        dataset = value.get("dataset")
-
-        if not dataset:
-
-            raise serializers.ValidationError(
-                "El dataset es obligatorio."
-            )
-
-        dataset = dataset.strip()
-
-        if not dataset:
-
-            raise serializers.ValidationError(
-                "El dataset no puede estar vacío."
-            )
-
-        batch_size = value.get(
-            "batch_size",
-            1000
-        )
-
-        if not isinstance(batch_size, int):
-
-            raise serializers.ValidationError(
-                "batch_size debe ser un entero."
-            )
-
-        if batch_size < 1 or batch_size > 10000:
-
-            raise serializers.ValidationError(
-                "batch_size debe estar entre 1 y 10000."
-            )
-
-        value["dataset"] = dataset
-
-        return value
 
 class ODataDiscoverySerializer(serializers.Serializer):
-    url = serializers.URLField()
+
+    connection = serializers.CharField(
+        required=True,
+        max_length=100
+    )
+
+    url = serializers.URLField(
+        required=True
+    )
+
     timeout = serializers.IntegerField(
         required=False,
         default=30,
         min_value=1,
         max_value=120
     )
+
+    def validate_connection(self, value):
+
+        value = value.strip()
+
+        if not value:
+            raise serializers.ValidationError(
+                "La conexión es obligatoria."
+            )
+
+        return value

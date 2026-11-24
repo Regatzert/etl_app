@@ -1,6 +1,7 @@
 
 import logging
 from datetime import datetime, timezone
+from typing import Any
 
 from etl_app.apps.etl.extract.odata_extractor import ODataExtractor
 
@@ -18,6 +19,7 @@ class ExtractionService:
         headers: dict | None = None,
         timeout: int = 60,
         max_retries: int = 3,
+        query_params: dict[str, Any] | None = None,
     ) -> dict:
 
         started_at = datetime.now(timezone.utc)
@@ -46,7 +48,8 @@ class ExtractionService:
                 auth=auth,
                 headers=headers,
                 timeout=timeout,
-                max_retries=max_retries
+                max_retries=max_retries,
+                query_params=query_params,
             )
 
             records = extractor.extract()

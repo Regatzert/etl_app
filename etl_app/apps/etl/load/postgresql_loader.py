@@ -414,6 +414,7 @@ class PostgreSQLLoader(BaseLoader):
             field_name = parts[0]
             lookup_type = parts[1] if len(parts) > 1 else "exact"
 
+            
             if field_name not in fields:
                 raise ValueError(
                     f"El campo '{field_name}' no existe en "
@@ -575,6 +576,7 @@ class PostgreSQLLoader(BaseLoader):
 
     @staticmethod
     def _empty_result(
+        self,
         model: type[Model],
         strategy: str,
     ) -> dict[str, Any]:
@@ -589,7 +591,8 @@ class PostgreSQLLoader(BaseLoader):
         return {
             "status": "success",
             "model": model.__name__,
-            "database": None,
+            "database": self.database,
+            "database_alias": self.database_alias,
             "strategy": strategy,
             "deleted_count": 0,
             "records_count": 0,
@@ -617,5 +620,8 @@ class PostgreSQLLoader(BaseLoader):
             "strategy": strategy,
             "records_count": 0,
             "deleted_count": 0,
-            "message": str(error),
+            "message": (
+                "No se pudo completar la operación de carga. "
+                "Revisa los registros de la aplicación para más detalles."
+            ),
         }

@@ -23,13 +23,21 @@ class ODataExtractor(BaseExtractor):
         headers: dict | None = None,
         timeout: int = 60,
         max_retries: int = 3,
-        page_size: int = 1000
+        page_size: int = 1000,
+        query_params: dict[str, Any] | None = None,
     ):
 
         self.url = url
         self.timeout = timeout
         self.max_retries = max_retries
         self.page_size = page_size
+
+        if query_params is not None and not isinstance(query_params, dict):
+            raise ValueError(
+                "Los parámetros OData deben proporcionarse como un diccionario."
+            )
+
+        self.query_params = dict(query_params) if query_params is not None else {}
 
         self.session = requests.Session()
 
@@ -168,28 +176,36 @@ class ODataExtractor(BaseExtractor):
         self._validate_url()
 
         records = []
-
         next_url = self.url
-
         page_number = 1
+        visited_urls = set()
 
         try:
 
             while next_url:
+
+                if next_url in visited_urls:
+                    raise ValueError(
+                        "Se detectó un ciclo en la paginación OData."
+                    )
+
+                visited_urls.add(next_url)
 
                 logger.info(
                     "Extrayendo página OData %s",
                     page_number
                 )
 
+                params = (
+                    dict(self.query_params)
+                    if page_number == 1
+                    else None
+                )
+
                 response = self.session.get(
                     next_url,
                     timeout=self.timeout,
-                    params=(
-                        {"$top": self.page_size}
-                        if page_number == 1
-                        else None
-                    )
+                    params=params,
                 )
 
                 response.raise_for_status()
@@ -202,9 +218,19 @@ class ODataExtractor(BaseExtractor):
                         "La respuesta OData no contiene JSON válido."
                     ) from error
 
+                if not isinstance(response_data, dict):
+                    raise ValueError(
+                        "La respuesta OData debe ser un objeto JSON."
+                    )
+
                 page_records = self._get_records_from_response(
                     response_data
                 )
+
+                if not all(isinstance(record, dict) for record in page_records):
+                    raise ValueError(
+                        "La respuesta OData contiene registros con formato inválido."
+                    )
 
                 records.extend(page_records)
 
@@ -214,9 +240,7 @@ class ODataExtractor(BaseExtractor):
                     len(page_records)
                 )
 
-                next_url = self._get_next_link(
-                    response_data
-                )
+                next_url = self._get_next_link(response_data)
 
                 if next_url:
                     next_url = self._validate_next_link(next_url)
@@ -238,6 +262,11 @@ class ODataExtractor(BaseExtractor):
     # =========================================
 
     def _validate_next_link(self, next_url: str) -> str:
+
+        if not isinstance(next_url, str) or not next_url.strip():
+            raise ValueError(
+                "El siguiente enlace OData no es válido."
+            )
 
         absolute_url = urljoin(self.url, next_url)
 

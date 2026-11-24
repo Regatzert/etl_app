@@ -4,6 +4,8 @@ from etl_app.apps.etl.config.sources import NORTHWIND_SOURCES
 from etl_app.apps.etl.services.orchestrator_service import (
     OrchestratorService
 )
+from datetime import datetime, timezone
+from time import perf_counter
 
 from etl_app.apps.data.models import (
     NorthwindProduct,
@@ -115,6 +117,9 @@ def sync_suppliers():
 
 def sync_all():
 
+    started_at = datetime.now(timezone.utc)
+    start_counter = perf_counter()
+
     results = {}
 
     processes = {
@@ -131,14 +136,31 @@ def sync_all():
 
         if result.get("status") != "success":
 
+            finished_at = datetime.now(timezone.utc)
+
             return {
                 "status": "error",
                 "message": f"Error ejecutando el proceso {name}.",
+                "started_at": started_at.isoformat(),
+                "finished_at": finished_at.isoformat(),
+                "duration_seconds": round(
+                    perf_counter() - start_counter, 3
+                ),
                 "processes": results,
             }
 
+    finished_at = datetime.now(timezone.utc)
+
     return {
         "status": "success",
-        "message": "Todos los procesos Northwind finalizaron correctamente.",
+        "message": (
+            "Todos los procesos Northwind finalizaron correctamente."
+        ),
+        "started_at": started_at.isoformat(),
+        "finished_at": finished_at.isoformat(),
+        "duration_seconds": round(
+            perf_counter() - start_counter, 3
+        ),
         "processes": results,
     }
+

@@ -53,6 +53,11 @@ class OrchestratorService:
 
         transformation = transformation or {}
 
+        if not isinstance(transformation, dict):
+            raise ValueError(
+                "La configuración transformation debe ser un diccionario."
+            )
+
         logger.info("Iniciando pipeline ETL.")
 
         try:
@@ -97,6 +102,12 @@ class OrchestratorService:
 
             connection_config = CONNECTIONS[connection_name]
 
+            if connection_config.get("source_type") != source_type:
+                raise ValueError(
+                    f"La conexión '{connection_name}' no es compatible "
+                    f"con el tipo de fuente '{source_type}'."
+                )
+
             authentication = (
                 AuthenticationService.get_authentication(
                     connection_name
@@ -104,22 +115,28 @@ class OrchestratorService:
             )
 
             timeout = int(
-                os.getenv(
-                    connection_config.get(
-                        "timeout_env",
-                        "ODATA_TIMEOUT"
-                    ),
-                    "60"
+                source.get(
+                    "timeout",
+                    os.getenv(
+                        connection_config.get(
+                            "timeout_env",
+                            "ODATA_TIMEOUT"
+                        ),
+                        "60"
+                    )
                 )
             )
 
             max_retries = int(
-                os.getenv(
-                    connection_config.get(
-                        "max_retries_env",
-                        "ETL_MAX_RETRIES"
-                    ),
-                    "3"
+                source.get(
+                    "max_retries",
+                    os.getenv(
+                        connection_config.get(
+                            "max_retries_env",
+                            "ETL_MAX_RETRIES"
+                        ),
+                        "3"
+                    )
                 )
             )
 
@@ -159,6 +176,7 @@ class OrchestratorService:
                     headers=headers,
                     timeout=timeout,
                     max_retries=max_retries,
+                    query_params=source.get("query_params"),
                 )
             )
 
@@ -328,6 +346,27 @@ class OrchestratorService:
             raise ValueError(
                 "La URL de origen es obligatoria."
             )
+
+        query_params = source.get("query_params")
+
+        if query_params is not None:
+
+            if not isinstance(query_params, dict):
+                raise ValueError(
+                    "query_params debe ser un diccionario."
+                )
+
+            for key, value in query_params.items():
+
+                if not isinstance(key, str) or not key.strip():
+                    raise ValueError(
+                        "Los nombres de los parámetros no pueden estar vacíos."
+                    )
+
+                if value is None:
+                    raise ValueError(
+                        f"El parámetro '{key}' no puede tener valor None."
+                    )
 
         if not destination.get("model"):
             raise ValueError(
